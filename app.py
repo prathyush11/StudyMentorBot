@@ -22,8 +22,7 @@ from langgraph.graph.message import add_messages
 
 # Load API Key
 try:
-    load_dotenv()
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
     if not GOOGLE_API_KEY:
         st.error("GOOGLE_API_KEY not found. Please create a .env file and add your key.")
         st.stop()
