@@ -13,10 +13,10 @@ from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains import RetrievalQA
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 
@@ -82,11 +82,6 @@ def parse_notes(notes: str) -> list[str]:
     """Extracts key concepts from study notes."""
     return [line.strip() for line in notes.splitlines() if line.strip()]
 
-# @tool
-# def confirm_session(response: str) -> bool:
-#     """Determines if the user wants to end the session."""
-#     return response.strip().lower() in ("yes", "y", "quit", "exit", "bye")
-
 # Initialize LLM
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
 tools = [create_quiz_question, parse_notes]
@@ -111,18 +106,14 @@ def agent_node(state: StudyState) -> dict:
     response = robust_llm_invoke(messages_with_system_prompt)
     if response is None:
         return {"messages": [AIMessage(content="Sorry, an error occurred with the AI model. Please try again.")]}
-
     if not getattr(response, "tool_calls", None):
         return {"messages": [response]}
-
     tool_output_messages = []
     quiz_data_to_store = {}
-
     for tool_call in response.tool_calls:
         tool_name = tool_call["name"]
         tool_to_call = next(t for t in tools if t.name == tool_name)
         tool_output = tool_to_call.invoke(tool_call["args"])
-
         if tool_name == "create_quiz_question":
             quiz_data_to_store = tool_output
             formatted_question = f"{tool_output['question']}\n\n"
@@ -131,7 +122,6 @@ def agent_node(state: StudyState) -> dict:
             tool_output_messages.append(AIMessage(content=formatted_question))
         else:
             tool_output_messages.append(AIMessage(content=str(tool_output)))
-
     return {"messages": tool_output_messages, "current_quiz": quiz_data_to_store}
 
 def check_answer_node(state: StudyState) -> dict:
@@ -179,7 +169,6 @@ with st.sidebar:
                     except RuntimeError:
                         loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-
                     loader = PyPDFLoader(tmp_path)
                     documents = loader.load()
                     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -193,13 +182,16 @@ with st.sidebar:
                         "Keep the answer concise and helpful."
                         "\n\n{context}"
                     )
-
                     prompt_template = ChatPromptTemplate.from_messages(
                         [("system", rag_system_prompt), ("human", "{input}")]
                     )
-
-                    qa_chain = create_stuff_documents_chain(llm, prompt_template)
-                    st.session_state.rag_chain = create_retrieval_chain(retriever, qa_chain)
+                    st.session_state.rag_chain = RetrievalQA.from_chain_type(
+                        llm=llm,
+                        retriever=retriever,
+                        chain_type="stuff",
+                        return_source_documents=False,
+                        chain_type_kwargs={"prompt": prompt_template}
+                    )
                     st.success("Document processed! You can now ask questions about it.")
                 finally:
                     os.remove(tmp_path)
