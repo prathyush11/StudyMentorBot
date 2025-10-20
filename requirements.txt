@@ -5,3 +5,4 @@ langchain-community
 langchain-google-genai
 faiss-cpu
 typing-extensions
+langchain-text-splitters
